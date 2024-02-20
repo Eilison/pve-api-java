@@ -7,18 +7,15 @@ package it.corsinvest.proxmoxve.api;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.Proxy;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.HostnameVerifier;
@@ -308,10 +305,15 @@ public class PveClientBase {
         Map<String, Object> params = new LinkedHashMap<>();
         if (parameters != null) {
             parameters.entrySet().stream().filter((entry) -> (entry.getValue() != null)).forEachOrdered((entry) -> {
-                Object value = entry.getValue();
-                if (value instanceof Boolean) {
-                    params.put(entry.getKey(), ((Boolean) value) ? 1 : 0);
-                } else {
+                String value = null;
+                try {
+                    value = URLEncoder.encode(entry.getValue().toString(), "UTF-8");
+                } catch (UnsupportedEncodingException e) {
+                    throw new RuntimeException(e);
+                }
+                if (entry.getValue() instanceof Boolean) {
+                    value = ((Boolean) entry.getValue()) ? "1" : "0";
+                }else {
                     params.put(entry.getKey(), value);
                 }
             });
