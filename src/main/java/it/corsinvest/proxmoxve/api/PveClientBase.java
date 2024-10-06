@@ -4,10 +4,7 @@
  */
 package it.corsinvest.proxmoxve.api;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.Proxy;
 import java.net.URL;
@@ -24,9 +21,13 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+
+import it.corsinvest.proxmoxve.api.utils.HttpUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import static it.corsinvest.proxmoxve.api.utils.HttpUtils.*;
 
 /**
  * Proxmox VE Client Base
@@ -217,7 +218,19 @@ public class PveClientBase {
      * @throws JSONException
      */
     public Result create(String resource, Map<String, Object> parameters) throws JSONException {
-        return executeAction(resource, MethodType.CREATE, parameters);
+        return create(resource, parameters, null);
+    }
+
+    /**
+     * Execute method POST
+     *
+     * @param resource Url request
+     * @param parameters Additional parameters
+     * @return Result
+     * @throws JSONException
+     */
+    public Result create(String resource, Map<String, Object> parameters, Map<String, String> headers) throws JSONException {
+        return executeAction(resource, MethodType.CREATE, parameters, headers);
     }
 
     /**
@@ -279,7 +292,11 @@ public class PveClientBase {
         }
     }
 
-    private Result executeAction(String resource, MethodType methodType, Map<String, Object> parameters)
+    private Result executeAction(String resource, MethodType methodType, Map<String, Object> parameters) {
+        return executeAction(resource, methodType, parameters, null);
+    }
+
+    private Result executeAction(String resource, MethodType methodType, Map<String, Object> parameters, Map<String, String> headers)
             throws JSONException {
         String url = getApiUrl() + resource;
 
@@ -305,16 +322,22 @@ public class PveClientBase {
         Map<String, Object> params = new LinkedHashMap<>();
         if (parameters != null) {
             parameters.entrySet().stream().filter((entry) -> (entry.getValue() != null)).forEachOrdered((entry) -> {
-                String value = null;
-                try {
-                    value = URLEncoder.encode(entry.getValue().toString(), "UTF-8");
-                } catch (UnsupportedEncodingException e) {
-                    throw new RuntimeException(e);
-                }
+
                 if (entry.getValue() instanceof Boolean) {
-                    value = ((Boolean) entry.getValue()) ? "1" : "0";
-                }else {
-                    params.put(entry.getKey(), value);
+                    params.put(entry.getKey(), ((Boolean) entry.getValue()) ? "1" : "0");
+                } else if (entry.getValue() instanceof File) {
+                    params.put(entry.getKey(), entry.getValue());
+                } else {
+                    if (MethodType.GET.equals(methodType)) {
+                        try {
+                            String value = URLEncoder.encode(entry.getValue().toString(), "UTF-8");
+                            params.put(entry.getKey(), value);
+                        } catch (UnsupportedEncodingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    } else {
+                        params.put(entry.getKey(), entry.getValue());
+                    }
                 }
             });
         }
@@ -361,10 +384,15 @@ public class PveClientBase {
                     if (!params.isEmpty()) {
                         StringBuilder urlParams = new StringBuilder();
                         params.forEach((key, value) -> {
-                            urlParams.append(urlParams.length() > 0 ? "&" : "")
-                                    .append(key)
-                                    .append("=")
-                                    .append(value.toString());
+                            try {
+                                String paramValue = URLEncoder.encode(value.toString(), "UTF-8");
+                                urlParams.append(urlParams.length() > 0 ? "&" : "")
+                                        .append(key)
+                                        .append("=")
+                                        .append(paramValue);
+                            } catch (UnsupportedEncodingException e) {
+                                throw new RuntimeException(e);
+                            }
                         });
                         url += "?" + urlParams.toString();
                     }
@@ -389,12 +417,44 @@ public class PveClientBase {
                     String data = new JSONObject(params).toString();
                     httpCon = (HttpURLConnection) new URL(url).openConnection(_proxy);
                     httpCon.setRequestMethod(httpMethod);
-                    httpCon.setRequestProperty("Content-Type", "application/json");
+
+                    if (Objects.nonNull(headers)) {
+                        for (Map.Entry<String, String> entry : headers.entrySet()) {
+                            httpCon.setRequestProperty(entry.getKey(), entry.getValue());
+                        }
+                    }
+
+                    if (!httpCon.getRequestProperties().containsKey("Content-Type")) {
+                        httpCon.setRequestProperty("Content-Type", "application/json");
+                    }
                     httpCon.setRequestProperty("Content-Length", String.valueOf(data.length()));
                     setToken(httpCon);
 
                     httpCon.setDoOutput(true);
-                    httpCon.getOutputStream().write(data.getBytes("UTF-8"));
+
+                    if (httpCon.getRequestProperty("Content-Type").startsWith("multipart/form-data")) {
+                        // 往服务器端写内容 也就是发起http请求需要带的参数
+                        OutputStream os = new DataOutputStream(httpCon.getOutputStream());
+
+                        Map<String, Object> requestText = new HashMap<>();
+                        params.entrySet().forEach(stringObjectEntry -> {
+                            if (!(stringObjectEntry.getValue() instanceof File)) {
+                                requestText.put(stringObjectEntry.getKey(), stringObjectEntry.getValue());
+                            }
+                        });
+
+                        // 请求参数部分
+                        HttpUtils.writeParams(requestText, os);
+                        // 请求上传文件部分
+                        HttpUtils.writeFile(params, os);
+                        // 请求结束标志
+                        String endTarget = PREFIX + BOUNDARY + PREFIX + LINE_END;
+//                        httpCon.setRequestProperty("Content-Length", String.valueOf(endTarget.getBytes().length));
+                        os.write(endTarget.getBytes());
+                        os.flush();
+                    } else {
+                        httpCon.getOutputStream().write(data.getBytes("UTF-8"));
+                    }
                     break;
                 }
 
@@ -443,6 +503,8 @@ public class PveClientBase {
             }
         } catch (IOException ex) {
             Logger.getLogger(PveClientBase.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (Exception e) {
+            Logger.getLogger(PveClientBase.class.getName()).log(Level.SEVERE, null, e);
         }
 
         _lastResult = new Result(response,

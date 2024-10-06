@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import org.json.JSONException;
 
+import static it.corsinvest.proxmoxve.api.utils.HttpUtils.BOUNDARY;
+
 /**
  * Proxmox VE Client
  */
@@ -17432,14 +17434,18 @@ public class PveClient extends PveClientBase {
                          * @return Result
                          * @throws JSONException
                          */
-                        public Result upload(String content, String filename, String checksum, String checksum_algorithm, String tmpfilename) throws JSONException {
+                        public Result upload(String content, Object filename, String checksum, String checksum_algorithm, String tmpfilename) throws JSONException {
                             Map<String, Object> parameters = new HashMap<>();
                             parameters.put("content", content);
                             parameters.put("filename", filename);
                             parameters.put("checksum", checksum);
                             parameters.put("checksum-algorithm", checksum_algorithm);
                             parameters.put("tmpfilename", tmpfilename);
-                            return client.create("/nodes/" + this.node + "/storage/" + this.storage + "/upload", parameters);
+
+                            Map<String, String> headers = new HashMap<>();
+                            headers.put("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
+
+                            return client.create("/nodes/" + this.node + "/storage/" + this.storage + "/upload", parameters, headers);
                         }
 
                         /**
@@ -17452,11 +17458,15 @@ public class PveClient extends PveClientBase {
                          * @throws JSONException
                          */
 
-                        public Result upload(String content, String filename) throws JSONException {
+                        public Result upload(String content, Object filename) throws JSONException {
                             Map<String, Object> parameters = new HashMap<>();
                             parameters.put("content", content);
                             parameters.put("filename", filename);
-                            return client.create("/nodes/" + this.node + "/storage/" + this.storage + "/upload", parameters);
+
+                            Map<String, String> headers = new HashMap<>();
+                            headers.put("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
+
+                            return client.create("/nodes/" + this.node + "/storage/" + this.storage + "/upload", parameters, headers);
                         }
 
                     }
