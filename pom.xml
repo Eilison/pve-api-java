@@ -4,8 +4,8 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>it.corsinvest.proxmoxve</groupId>
-    <artifactId>pve-api-java</artifactId>
-    <version>8.1.2</version>
+    <artifactId>cv4pve-api-java</artifactId>
+    <version>8.1.1</version>
     <packaging>jar</packaging>
     <name>pve-api-java</name>
     <description>Corsinvest for Proxmox VE Client API Java</description>
@@ -48,6 +48,19 @@
     </distributionManagement>
     -->
 
+    <developers>
+        <developer>
+            <id>dc</id>
+            <name>Daniele Corsini</name>
+            <email>daniele.corsini@corsinvest.it</email>
+            <roles>
+                <role>Project Manager</role>
+                <role>Architect</role>
+            </roles>
+            <organization>Corsinvest Srl</organization>
+            <timezone>0</timezone>
+        </developer>
+    </developers>
     <dependencies>
         <dependency>
             <groupId>org.json</groupId>

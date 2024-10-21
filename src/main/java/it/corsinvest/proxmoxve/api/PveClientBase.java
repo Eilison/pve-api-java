@@ -43,6 +43,8 @@ public class PveClientBase {
     private ResponseType _responseType = ResponseType.JSON;
     private String _apiToken;
     private Proxy _proxy = Proxy.NO_PROXY;
+    private int _timeout = 0;
+    private boolean _validateCertificate = false;
 
     public PveClientBase(String hostname, int port) {
         _hostname = hostname;
@@ -103,6 +105,27 @@ public class PveClientBase {
      */
     public void setResponseType(ResponseType responseType) {
         _responseType = responseType;
+    }
+
+    /**
+     * Set timeout connection
+     *
+     * @param timeout
+     */
+    public void setTimeout(int timeout) {
+        if (timeout < 0) {
+            throw new IllegalArgumentException("timeout can not be negative");
+        }
+        _timeout = timeout;
+    }
+
+    /**
+     * Return timeout connection
+     *
+     * @return
+     */
+    public int getTimeout() {
+        return _timeout;
     }
 
     /**
@@ -292,6 +315,12 @@ public class PveClientBase {
         }
     }
 
+    private void setConnectionTimeout(HttpURLConnection httpCon) {
+        if (_timeout > 0) {
+            httpCon.setConnectTimeout(_timeout);
+        }
+    }
+
     private Result executeAction(String resource, MethodType methodType, Map<String, Object> parameters) {
         return executeAction(resource, methodType, parameters, null);
     }
@@ -322,15 +351,13 @@ public class PveClientBase {
         Map<String, Object> params = new LinkedHashMap<>();
         if (parameters != null) {
             parameters.entrySet().stream().filter((entry) -> (entry.getValue() != null)).forEachOrdered((entry) -> {
-
-                if (entry.getValue() instanceof Boolean) {
-                    params.put(entry.getKey(), ((Boolean) entry.getValue()) ? "1" : "0");
-                } else if (entry.getValue() instanceof File) {
-                    params.put(entry.getKey(), entry.getValue());
+                Object value = entry.getValue();
+                if (value instanceof Boolean) {
+                    params.put(entry.getKey(), ((Boolean) value) ? 1 : 0);
                 } else {
                     if (MethodType.GET.equals(methodType)) {
                         try {
-                            String value = URLEncoder.encode(entry.getValue().toString(), "UTF-8");
+                            value = URLEncoder.encode(value.toString(), "UTF-8");
                             params.put(entry.getKey(), value);
                         } catch (UnsupportedEncodingException e) {
                             throw new RuntimeException(e);
@@ -342,29 +369,31 @@ public class PveClientBase {
             });
         }
 
-        // Create a trust manager that does not validate certificate chains
-        TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
-            @Override
-            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                return null;
-            }
+        if (!_validateCertificate) {
+            // Create a trust manager that does not validate certificate chains
+            TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
+                @Override
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return null;
+                }
 
-            @Override
-            public void checkClientTrusted(X509Certificate[] certs, String authType) {
-            }
+                @Override
+                public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                }
 
-            @Override
-            public void checkServerTrusted(X509Certificate[] certs, String authType) {
-            }
-        }};
+                @Override
+                public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                }
+            }};
 
-        // Install the all-trusting trust manager
-        try {
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new java.security.SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-        } catch (NoSuchAlgorithmException | KeyManagementException ex) {
-            Logger.getLogger(PveClientBase.class.getName()).log(Level.SEVERE, null, ex);
+            // Install the all-trusting trust manager
+            try {
+                SSLContext sc = SSLContext.getInstance("SSL");
+                sc.init(null, trustAllCerts, new java.security.SecureRandom());
+                HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            } catch (NoSuchAlgorithmException | KeyManagementException ex) {
+                Logger.getLogger(PveClientBase.class.getName()).log(Level.SEVERE, null, ex);
+            }
         }
 
         // Create all-trusting host name verifier
@@ -399,21 +428,13 @@ public class PveClientBase {
 
                     httpCon = (HttpURLConnection) new URL(url).openConnection(_proxy);
                     httpCon.setRequestMethod("GET");
+                    setConnectionTimeout(httpCon);
                     setToken(httpCon);
                     break;
                 }
 
                 case SET:
                 case CREATE: {
-                    /*
-                    var postData = new StringBuilder();
-                    params.forEach((key, value) -> {
-                        postData.append(postData.length() > 0 ? "&" : "").append(key).append("=").append(value);
-                    });
-
-                    var postDataBytes = postData.toString().getBytes("UTF-8");
-                     */
-
                     String data = new JSONObject(params).toString();
                     httpCon = (HttpURLConnection) new URL(url).openConnection(_proxy);
                     httpCon.setRequestMethod(httpMethod);
@@ -428,6 +449,7 @@ public class PveClientBase {
                         httpCon.setRequestProperty("Content-Type", "application/json");
                     }
                     httpCon.setRequestProperty("Content-Length", String.valueOf(data.length()));
+                    setConnectionTimeout(httpCon);
                     setToken(httpCon);
 
                     httpCon.setDoOutput(true);
@@ -461,6 +483,7 @@ public class PveClientBase {
                 case DELETE: {
                     httpCon = (HttpURLConnection) new URL(url).openConnection(_proxy);
                     httpCon.setRequestMethod("DELETE");
+                    setConnectionTimeout(httpCon);
                     setToken(httpCon);
                     break;
                 }
